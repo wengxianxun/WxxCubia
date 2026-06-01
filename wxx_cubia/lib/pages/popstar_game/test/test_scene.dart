@@ -51,6 +51,42 @@ class TestScene extends PositionComponent with HasGameRef {
     );
     starblock.position = Vector2(100, 600);
     add(starblock);
+
+    final starblock2 = CubeBlock(
+      row: 1,
+      col: 1,
+      blockType: BlockType.blue_star,
+      size: Vector2(90, 90),
+    );
+    starblock2.position = Vector2(200, 600);
+    add(starblock2);
+
+    final starblock3 = CubeBlock(
+      row: 1,
+      col: 1,
+      blockType: BlockType.green_star,
+      size: Vector2(90, 90),
+    );
+    starblock3.position = Vector2(300, 600);
+    add(starblock3);
+
+    final starblock4 = CubeBlock(
+      row: 1,
+      col: 1,
+      blockType: BlockType.red_star,
+      size: Vector2(90, 90),
+    );
+    starblock4.position = Vector2(300, 500);
+    add(starblock4);
+
+    final starblock5 = CubeBlock(
+      row: 1,
+      col: 1,
+      blockType: BlockType.purple_star,
+      size: Vector2(90, 90),
+    );
+    starblock5.position = Vector2(200, 500);
+    add(starblock5);
   }
 
   @override

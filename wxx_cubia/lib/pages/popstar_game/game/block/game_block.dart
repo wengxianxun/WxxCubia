@@ -1,59 +1,43 @@
-import 'package:flame/components.dart';
+import 'dart:math' as math;
+
+import 'package:flame/components.dart' hide Matrix4;
 import 'package:flutter/material.dart';
 import 'package:wxx_cubia/pages/popstar_game/game/block/block_type.dart';
 
-class BlockColorStyle {
-  final Color top;
-  final Color bottom;
-  final Color border;
-  final Color shadow; // 👈 新增
+enum BlockShape { circle, diamond, square, triangle, star }
 
-  const BlockColorStyle({
-    required this.top,
-    required this.bottom,
-    required this.border,
-    required this.shadow,
-  });
+class BlockStyle {
+  final Color color;
+  final BlockShape shape;
+  const BlockStyle({required this.color, required this.shape});
 }
 
 const blockStyles = {
-  BlockType.red_star: BlockColorStyle(
-    top: Color(0xFFFF4630),
-    bottom: Color(0xFFF82A23),
-    border: Color(0xFFF82A23),
-    shadow: Color(0xFFD81B1B), // 深红
+  BlockType.red_star: BlockStyle(
+    color: Color(0xFFFF4630),
+    shape: BlockShape.circle,
   ),
-  BlockType.blue_star: BlockColorStyle(
-    top: Color(0xFF2F96D2),
-    bottom: Color(0xFF1B78B5),
-    border: Color(0xFF1B78B5),
-    shadow: Color(0xFF155A8A), // 深蓝
+  BlockType.blue_star: BlockStyle(
+    color: Color(0xFF2F96D2),
+    shape: BlockShape.diamond,
   ),
-  BlockType.green_star: BlockColorStyle(
-    top: Color(0xFF6DBE52),
-    bottom: Color(0xFF4F9B38),
-    border: Color(0xFF4F9B38),
-    shadow: Color(0xFF3B7A2A), // 深绿
+  BlockType.green_star: BlockStyle(
+    color: Color(0xFF6DBE52),
+    shape: BlockShape.square,
   ),
-  BlockType.yellow_star: BlockColorStyle(
-    top: Color(0xFFFFC93A),
-    bottom: Color(0xFFFFB300),
-    border: Color(0xFFFB72FA),
-    shadow: Color(0xFFCC8F00), // 深黄（偏橙）
+  BlockType.yellow_star: BlockStyle(
+    color: Color(0xFFFFC93A),
+    shape: BlockShape.triangle,
   ),
-  BlockType.purple_star: BlockColorStyle(
-    top: Color(0xFFB15CFF),
-    bottom: Color(0xFF913CFF),
-    border: Color(0xFF913CFF),
-    shadow: Color(0xFF6F2FCC), // 深紫
+  BlockType.purple_star: BlockStyle(
+    color: Color(0xFFB15CFF),
+    shape: BlockShape.star,
   ),
 };
 
-const defaultBlockStyle = BlockColorStyle(
-  top: Color(0xFF9E9E9E),
-  bottom: Color(0xFF6E6E6E),
-  border: Color(0xFF5A5A5A),
-  shadow: Color(0xFF424242), // 👈 深灰阴影
+const defaultBlockStyle = BlockStyle(
+  color: Color(0xFF9E9E9E),
+  shape: BlockShape.circle,
 );
 
 class GameBlock extends PositionComponent {
@@ -65,99 +49,61 @@ class GameBlock extends PositionComponent {
 
   bool highlighted = false;
 
-  /// 缩放动画相关
   double _scale = 1.0;
-  double _scale_targetScale = 1.0;
-  bool _scale_isAnimating = false;
-  bool _scale_shrinkPhase = false;
-  final double _scale_shrinkScale = 0.9;
-  final double _scale_animationSpeed = 20.0;
+  double _scaleTargetScale = 1.0;
+  bool _scaleIsAnimating = false;
+  bool _scaleShrinkPhase = false;
 
-  /// ==============================
-  /// 缓存对象
-  /// ==============================
+  final double _scaleShrinkScale = 0.90;
+  final double _scaleAnimationSpeed = 20.0;
 
   late Rect rect;
   late RRect rrect;
 
-  late RRect uprect;
-
-  late Rect innerRect;
-  late RRect innerRRect;
-
-  late Rect highlightRect;
-  late RRect highlightRRect;
-
-  /// Paint缓存
   final Paint bodyPaint = Paint();
-
-  final Paint upPaint = Paint();
-
   final Paint borderPaint = Paint();
-  final Paint innerBorderPaint = Paint();
-  final Paint highlightPaint = Paint();
+  final Paint shapePaint = Paint();
+
+  Path? _cachedPath;
+  BlockShape? _cachedShape;
+  double? _cachedSize;
+
+  double? _cachedRadius;
+  Offset? _cachedCenter;
 
   @override
   Future<void> onLoad() async {
-    super.onLoad();
+    await super.onLoad();
 
-    /// 主体区域
     rect = Rect.fromLTWH(1, 1, size.x - 2, size.y - 2);
 
-    rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.x * 0.3));
-
-    /// 内边框
-    final innerOffset = size.x * 0.0575;
-
-    innerRect = Rect.fromLTWH(
-      innerOffset,
-      innerOffset,
-      size.x - innerOffset * 2,
-      size.y - innerOffset * 2,
-    );
-    uprect = RRect.fromRectAndRadius(innerRect, Radius.circular(size.x * 0.18));
-    innerRRect = RRect.fromRectAndRadius(
-      innerRect,
-      Radius.circular(size.x * (blockType.isStar ? 0.18 : 0.1)),
-    );
-
-    /// 高光
-    highlightRect = Rect.fromLTWH(
-      size.x * 0.2,
-      size.y * 0.1,
-      size.x * 0.6,
-      size.y * 0.35,
-    );
-
-    highlightRRect = RRect.fromRectAndRadius(
-      highlightRect,
-      Radius.circular(size.x * 0.3),
-    );
+    rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.x * 0.22));
 
     _updatePaint();
+    _updateCachedShape();
   }
 
-  /// 更新颜色
   void updateTypeAndIcon({required BlockType newType, Sprite? newIcon}) {
     blockType = newType;
     icon = newIcon;
 
     _updatePaint();
+    _updateCachedShape();
   }
 
   void setHighlight(bool value) {
     highlighted = value;
-    if (highlighted && !_scale_isAnimating) {
-      /// 开始动画：先缩小到 0.8
-      _scale_isAnimating = true;
-      _scale_shrinkPhase = true;
-      _scale_targetScale = _scale_shrinkScale;
+
+    if (highlighted && !_scaleIsAnimating) {
+      _scaleIsAnimating = true;
+      _scaleShrinkPhase = true;
+      _scaleTargetScale = _scaleShrinkScale;
     } else if (!highlighted) {
-      /// 取消高亮，直接恢复到 1.0
-      _scale_targetScale = 1.0;
-      _scale_isAnimating = false;
-      _scale_shrinkPhase = false;
+      _scaleTargetScale = 1.0;
+      _scaleIsAnimating = false;
+      _scaleShrinkPhase = false;
     }
+
     _updatePaint();
   }
 
@@ -165,148 +111,256 @@ class GameBlock extends PositionComponent {
   void update(double dt) {
     super.update(dt);
 
-    /// 平滑插值到目标缩放
-    _scale += (_scale_targetScale - _scale) * _scale_animationSpeed * dt;
+    _scale += (_scaleTargetScale - _scale) * _scaleAnimationSpeed * dt;
 
-    /// 检查是否完成缩小阶段，如果完成则切换到恢复阶段
-    if (_scale_isAnimating &&
-        _scale_shrinkPhase &&
-        (_scale - _scale_shrinkScale).abs() < 0.01) {
-      _scale_shrinkPhase = false;
-      _scale_targetScale = 1.0;
+    if (_scaleIsAnimating &&
+        _scaleShrinkPhase &&
+        (_scale - _scaleShrinkScale).abs() < 0.01) {
+      _scaleShrinkPhase = false;
+      _scaleTargetScale = 1.05;
     }
 
-    /// 检查是否完成恢复阶段
-    if (_scale_isAnimating &&
-        !_scale_shrinkPhase &&
-        (_scale - 1.0).abs() < 0.01) {
-      _scale_isAnimating = false;
-      _scale = 1.0;
+    if (_scaleIsAnimating &&
+        !_scaleShrinkPhase &&
+        (_scale - 1.05).abs() < 0.02) {
+      _scaleTargetScale = 1.0;
     }
 
-    /// 应用缩放变换
     scale = Vector2.all(_scale);
   }
 
-  /// 更新 Paint
+  Color _lighten(Color color, double amount) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness((hsl.lightness + amount).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  Color _darken(Color color, double amount) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   void _updatePaint() {
     final style = blockStyles[blockType] ?? defaultBlockStyle;
 
-    /// 主体渐变
     bodyPaint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [style.bottom, style.bottom],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [_lighten(style.color, 0.12), _darken(style.color, 0.18)],
     ).createShader(rect);
 
-    /// 主体上面渐变
-    upPaint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [style.top, style.bottom],
-    ).createShader(rect);
+    shapePaint.color = _darken(style.color, 0.22);
 
-    /// 外边框
     borderPaint
-      ..color = highlighted ? const Color(0xFFFFE7B8) : style.border
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.x * 0.0825;
-
-    /// 内边框
-    // innerBorderPaint
-    //   ..color = style.top.withOpacity(type.isStar ? 0.6 : 0.8)
-    //   ..style = PaintingStyle.stroke
-    //   ..strokeWidth = 2;
-
-    innerBorderPaint
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        // colors: [
-        //   const Color(0xFFFFF3E0).withOpacity(0.2), // 米色（暖高光）
-        //   const Color(0xFFFFF3E0).withOpacity(0.2),
-        //   highlighted ? style.border : style.shadow, // 清灰（柔阴影）
-        // ],
-        colors: [
-          style.top.withOpacity(0.4), // 高光（同色亮）
-          style.shadow.withOpacity(0.4), // 👈 专属阴影
-        ],
-        stops: const [0.0, 1.0],
-      ).createShader(innerRect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    /// 高光
-    highlightPaint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        style.top.withOpacity(0.3),
-        style.top.withOpacity(0.2),
-        Colors.transparent,
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    ).createShader(highlightRect);
+      ..strokeWidth = 2
+      ..color = Colors.white.withOpacity(.15);
   }
 
-  /// ==============================
-  /// 渲染
-  /// ==============================
+  BlockShape getCurrentShape() {
+    return (blockStyles[blockType] ?? defaultBlockStyle).shape;
+  }
+
+  double _shapeScale(BlockShape shape) {
+    switch (shape) {
+      case BlockShape.circle:
+        return 0.85;
+      case BlockShape.square:
+        return 0.83;
+      case BlockShape.diamond:
+        return 0.92;
+      case BlockShape.triangle:
+        return 1.0;
+      case BlockShape.star:
+        return 1.05;
+    }
+  }
+
+  void _updateCachedShape() {
+    final shape = getCurrentShape();
+    final center = Offset(size.x / 2, size.y / 2);
+    final shapeSize = size.x * 0.48 * _shapeScale(shape);
+
+    _cachedShape = shape;
+    _cachedSize = shapeSize;
+    _cachedCenter = center;
+
+    switch (shape) {
+      case BlockShape.circle:
+        _cachedRadius = shapeSize / 2;
+        _cachedPath = null;
+        break;
+      case BlockShape.diamond:
+        _cachedPath = _createRoundedDiamondPath(center, shapeSize);
+        break;
+      case BlockShape.square:
+        _cachedPath = _createRoundedSquarePath(center, shapeSize);
+        break;
+      case BlockShape.triangle:
+        _cachedPath = _createRoundedTrianglePath(center, shapeSize);
+        break;
+      case BlockShape.star:
+        _cachedPath = _createPlumpStarPath(center, shapeSize);
+        break;
+    }
+  }
+
+  Path _createRoundedDiamondPath(Offset center, double size) {
+    final half = size / 2;
+    return _roundedPolygonPath([
+      Offset(center.dx, center.dy - half),
+      Offset(center.dx + half, center.dy),
+      Offset(center.dx, center.dy + half),
+      Offset(center.dx - half, center.dy),
+    ], size * .12);
+  }
+
+  Path _createRoundedSquarePath(Offset center, double size) {
+    final half = size / 2;
+    return _roundedPolygonPath([
+      Offset(center.dx - half, center.dy - half),
+      Offset(center.dx + half, center.dy - half),
+      Offset(center.dx + half, center.dy + half),
+      Offset(center.dx - half, center.dy + half),
+    ], size * .15);
+  }
+
+  Path _createRoundedTrianglePath(Offset center, double size) {
+    final half = size / 2;
+    final height = size * .866;
+
+    return _roundedPolygonPath([
+      Offset(center.dx, center.dy - height / 2),
+      Offset(center.dx + half, center.dy + height / 2),
+      Offset(center.dx - half, center.dy + height / 2),
+    ], size * .12);
+  }
+
+  Path _roundedPolygonPath(List<Offset> points, double radius) {
+    final path = Path();
+
+    for (int i = 0; i < points.length; i++) {
+      final prev = points[(i - 1 + points.length) % points.length];
+      final current = points[i];
+      final next = points[(i + 1) % points.length];
+
+      final v1 = prev - current;
+      final v2 = next - current;
+
+      final d1 = v1.distance;
+      final d2 = v2.distance;
+
+      final r = math.min(radius, math.min(d1, d2) * .3);
+
+      final p1 = current + v1 / d1 * r;
+      final p2 = current + v2 / d2 * r;
+
+      if (i == 0) {
+        path.moveTo(p1.dx, p1.dy);
+      } else {
+        path.lineTo(p1.dx, p1.dy);
+      }
+
+      path.quadraticBezierTo(current.dx, current.dy, p2.dx, p2.dy);
+    }
+
+    path.close();
+    return path;
+  }
+
+  Path _createPlumpStarPath(Offset center, double size) {
+    final outerRadius = size / 2;
+    final innerRadius = outerRadius * .55;
+
+    final points = <Offset>[];
+
+    for (int i = 0; i < 10; i++) {
+      final angle = (i * 36 - 90) * math.pi / 180;
+      final radius = i.isEven ? outerRadius : innerRadius;
+
+      points.add(
+        Offset(
+          center.dx + radius * math.cos(angle),
+          center.dy + radius * math.sin(angle),
+        ),
+      );
+    }
+
+    return _roundedPolygonPath(points, size * .06);
+  }
+
+  void _drawGlow(Canvas canvas) {
+    if (!highlighted) return;
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFFFFD54F)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-5, -5, size.x + 10, size.y + 10),
+        Radius.circular(size.x * .28),
+      ),
+      glowPaint,
+    );
+  }
+
+  void _drawGloss(Canvas canvas) {
+    final glossRect = Rect.fromLTWH(
+      size.x * .08,
+      size.y * .08,
+      size.x * .84,
+      size.y * .28,
+    );
+
+    final glossPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.white.withOpacity(.35), Colors.white.withOpacity(0)],
+      ).createShader(glossRect);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(glossRect, Radius.circular(size.x * .18)),
+      glossPaint,
+    );
+  }
+
+  void _drawCenterShape(Canvas canvas) {
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withOpacity(.18);
+
+    if (_cachedCenter != null &&
+        _cachedRadius != null &&
+        _cachedShape == BlockShape.circle) {
+      canvas.drawCircle(_cachedCenter!, _cachedRadius!, shapePaint);
+      canvas.drawCircle(_cachedCenter!, _cachedRadius!, strokePaint);
+      return;
+    }
+
+    if (_cachedPath != null) {
+      canvas.drawPath(_cachedPath!, shapePaint);
+      canvas.drawPath(_cachedPath!, strokePaint);
+    }
+  }
 
   @override
   void render(Canvas canvas) {
     super.render(canvas);
 
-    if (blockType.isStar) {
-      /// 主体
-      // canvas.drawRRect(rrect, bodyPaint);
-      //
-      // canvas.drawRRect(uprect, upPaint);
+    _drawGlow(canvas);
 
-      /// 外边框
-      canvas.drawRRect(rrect, borderPaint);
+    canvas.drawRRect(rrect, bodyPaint);
 
-      // /// 内边框
-      // canvas.drawRRect(innerRRect, innerBorderPaint);
-      //
-      // /// 高光
-      // canvas.drawRRect(highlightRRect, highlightPaint);
-    } else {
-      /// 外边框
+    canvas.drawRRect(rrect, borderPaint);
 
-      /// 能量块主体
-      // final specialPaint = Paint()
-      //   ..shader = LinearGradient(
-      //     begin: Alignment.topCenter,
-      //     end: Alignment.bottomCenter,
-      //     colors: [const Color(0xFF303030), const Color(0xFF121212)],
-      //   ).createShader(rect);
-      //
-      // canvas.drawRRect(rrect, specialPaint);
+    _drawGloss(canvas);
 
-      /// glow
-      // final glowPaint = Paint()
-      //   ..color = Colors.white54
-      //   ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-      //
-      // canvas.drawRRect(rrect.inflate(2), glowPaint);
-
-      /// 边框
-      canvas.drawRRect(rrect, borderPaint);
-
-      /// 内边框
-      canvas.drawRRect(innerRRect, innerBorderPaint);
-    }
-
-    /// icon
-    if (icon != null) {
-      final iconSize = size.x * 0.8;
-
-      icon!.render(
-        canvas,
-        position: Vector2((size.x - iconSize) / 2, (size.y - iconSize) / 2),
-        size: Vector2.all(iconSize),
-      );
-    }
+    _drawCenterShape(canvas);
   }
 }
