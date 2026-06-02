@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:wxx_cubia/pages/popstar_game/game/block/block_type.dart';
 import 'package:wxx_cubia/pages/popstar_game/game/block/cube_block.dart';
+import 'package:wxx_cubia/pages/popstar_game/game/block/star_block.dart';
+import 'package:wxx_cubia/pages/popstar_game/test/test_block.dart';
 import 'package:wxx_cubia/util/huuua_config.dart';
 import 'package:wxx_cubia/util_flame/btn/g_text_button.dart';
 
@@ -79,14 +81,23 @@ class TestScene extends PositionComponent with HasGameRef {
     starblock4.position = Vector2(300, 500);
     add(starblock4);
 
-    final starblock5 = CubeBlock(
+    final starblock5 = StarBlock(
       row: 1,
       col: 1,
       blockType: BlockType.purple_star,
       size: Vector2(90, 90),
+      iconSprite: null,
     );
     starblock5.position = Vector2(200, 500);
     add(starblock5);
+
+    // 在游戏中心添加这个红色方块
+    add(
+      RedBlockComponent(
+        position: Vector2(100, 150),
+        size: Vector2(200, 200), // 可以是正方形，代码内自带圆角和比例适配
+      ),
+    );
   }
 
   @override
